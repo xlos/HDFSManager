@@ -1,25 +1,19 @@
 <?
-/*
-$HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
-$cmd = "$HADOOP_HOME/bin/hadoop fs -mv /home/ubuntu/user/temp /home/ubuntu/user/temp2";
-print $cmd;
-print shell_exec($cmd);
-//print exec($cmd);
-return 0;
-*/
-
+ini_set('display_errors',1);
+ini_set('display_startup_errors',1);
+//error_reporting(-1);
+error_reporting(E_ALL & ~E_NOTICE);
 $HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
 $FILE_LEN=32768;
-error_reporting(E_ALL & ~E_NOTICE);
-$command = getVar("command");
 $dir =  getCurrentPath();
 
-$fun = trim($_GET['command']);
-if( strlen($fun) > 0 ) { 
-    call_user_func($fun);
-	return;
+function getCurrentPath() {
+	$path= getVar('dir');
+	if( $path == null || $path == "") {
+		$path = "/";
+	}
+	return $path;
 }
-
 
 function getVar($key, $default=null) {
     global $_GET;
@@ -32,222 +26,153 @@ function getVar($key, $default=null) {
     }   
     return null;
 }
+class Hadoop{
+	private $HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
 
+	public function cmd($cmd1, $cmd2, $params){
+		if($cmd1 == null || $cmd2 == null)
+			return FALSE;
+		$method = $cmd1."_$cmd2";
+		$params = explode(" ", urldecode($params));
 
-/*
-function getMetaFilePath($filePath ) {
-	$arr = explode("/", $filePath);
-	$metaPath = "";
-	$count = count($arr);
-	for($i = 0; $i < $count ; $i++ ) {
-		if( $i == $count -1 ) {
-			$metaPath .= ".";
-		}
-		$metaPath .= $arr[$i];
-		if( $i == $count -1 ) {
-			$metaPath .= ".meta";
+		if(method_exists($this, $method)) {
+			print $this->$method($params);
 		}
 		else{
-			$metaPath .= "/";
+			print $this->hadoop_cmd($cmd1, $cmd2, $params);
 		}
+		return TRUE;
 	}
-	return $metaPath;
-}
-
-
-function executePig($input, $output, $columns, $condition) {
-	global $HADOOP_HOME;
-	global $PIG_HOME;
-	$jobName = "PigFilter:$input||$output";
-	$arr = array("--inputPath", $input, "--outputPath", $output,  "--loadAs", $columns, 
-		"--filterBy", $condition, "--hadoopHome", $HADOOP_HOME, "--pigHome", $PIG_HOME,
-		"--jobName", $jobName);
-	new PigFilterScriptBuilder($arr);
-}
-
-
-function saveMeta($filePath, $json) {
-	global $HADOOP_HOME;
-	$metaFilePath = getMetaFilePath($filePath);
-	hadoop("hadoop fs -rm $metaFilePath");
-	$r = shell_exec("echo '$json' | $HADOOP_HOME/bin/hadoop fs -put - $metaFilePath");
-	print $metaFilePath;
-}
-*/
-function viewPigJob($input) {
-	$user = exec("whoami");
-	//$lines = hadoop("hadoop JobList $user | grep PigFilter:$input | sort -r");
-	$lines = hadoop("hadoop JobList $user");
-	$lines = substr($lines, 0, -1);
-	$arr = explode("\n", $lines);
-	$result = array();
-	foreach($arr as $line) {
-		$result[] = explode("\t", $line);
-	}
-	$data = array();
-	if( strlen($lines) == 0 ) {
-		$data['count'] = 0;
-	}
-	else{
-		$data['count'] = count($arr);
-	}
-	$data['data'] = $result;
-
-	$json = json_encode($data);
-	print $json;
-}
-
-function viewFile(){
-	$filePath = getVar('filepath');
-	$offset = getVar('offset');
-	$len = getVar('len');
-	$r = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
-	echo $r;
-}
-function showJsonFile($filePath, $offset, $len) {
-	$csv = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
-	print convertToJson($csv);
-}
-function convertToJson($csv) {
-	$csv = substr($csv, 0, -1);
-	$arr = array_map("getcsv", explode("\n", $csv) );
-	return json_encode( array("rows" => $arr) ) ;
-}
-
-function hadoop($command, $beforeCommand="", $afterCommand="") {
-	global $HADOOP_HOME;
-	if( strlen($beforeCommand) > 0 ) {
-		$beforeCommand .= ";";
-	}
-	return shell_exec("$beforeCommand export HADOOP_CLASSPATH=.;$HADOOP_HOME/bin/$command; $afterCommand"); 
-}
-function deleteFile() {
-	$filePath = getVar("filepath");
-	print hadoop("hadoop fs -rm $filePath");
-}
-function renameFile() {
-	$before = getVar("before");
-	$after  = getVar("after");
-	$cmd = "hadoop fs -mv $before $after";
-	print $cmd;
-	print hadoop($cmd);
-}
-function parseLS($str) {
-	$a = preg_split("/\s+/", $str);
-	$r = array();
-
-	$type = "file";
-	if( $a[0][0] == 'd') {
-		$type = "dir";
-	}
-	$r['type'] = $type;
-
-	$r['fullpath'] = $a[7];
-	$names = explode('/', $r['fullpath']);
-	$r['name'] = $names[ count($names) -1 ];
-	$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
-	$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
-
-	$r['permission'] = substr($a[0], 1);
-	$r['replication'] = $a[1];
-	$r['owner'] = $a[2];
-	$r['group'] = $a[3];
-	$r['size'] = $a[4];
-	$r['modified'] = $a[5] . " " . $a[6];
-	return $r;
-}
-function file_size($size)
-{
-	if($size == "") {
-		return $size;
-	}
-	$filesizename = array(" Bytes", " KB", " MB", " GB", " TB", " PB", " EB", " ZB", " YB");
-	return $size ? round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $filesizename[$i] : '0 Bytes';
-}
-
-function postVar($key) {
-	return urldecode($_POST[$key]);
-}
-
-function addLink($dir, $name) {
-	return "<a href=?dir=$dir>$name</a>";
-}
-
-function addFileLink($dir, $name) {
-	return "<a href=\"javascript:viewFile('viewFile', '$dir')\">$name</a>";
-}
-
-function getCurrentPath() {
-	$path= $_GET['dir'];
-	if( $path == null || $path == "") {
-		$path = "/";
-	}
-	return $path;
-}
-function splitPathAndAddLink($path) {
-	$r = addLink("/", "ROOT /");
-	$a = explode("/", $path);
-	$path = "";
-	$delim = "";
-	foreach( $a as $v ) {
-		if( $v == "") {
-			continue;
+	private function hadoop_cmd($cmd1, $cmd2, $params) {
+		if(is_array($params)){
+			$params = implode(" ", $params);
 		}
-		$path .= "/" . $v;
-		$r .= $delim . addLink($path, $v);
-		$delim = "/";
+		return $this->hadoop_exec("hadoop $cmd1 -$cmd2 $params"); 
 	}
-	return $r;
-}
+	private function hadoop_exec($cmd){
+		return shell_exec("export HADOOP_CLASSPATH=.;{$this->HADOOP_HOME}/bin/$cmd"); 
+	}
 
-function viewDir() {
-	$path =  getCurrentPath();
-	print "<table class=grid>\n";
-	print "<tr>
-	<th class=type> Type </th>
-	<th class=name width=300> Name </th>
-	<th class=permissions> Operations </th>
-	<th class=permissions> Permissions </th>
-	<th class=replications> Replicates </th>
-	<th class=owner> Owner </th>
-	<th class=group> Group </th>
-	<th class=blockSize> Block Size </th>
-	<th class=modified> Modified </th>
-	</tr>\n";
-	$outputStr = hadoop("hadoop fs -ls $path"); 
-	$output = explode("\n", substr($outputStr, 0, -1));
+	public function fs_text($arr){
+		$filePath = $arr[0];
+		$offset = getVar('offset');
+		$len = getVar('len');
+		$r = $this->hadoop_exec("hadoop HdfsFileReader $filePath $offset $len"); 
+		echo $r;
+	}
 
-	foreach($output as $val) {
-		if( strncmp("Found", $val, 5) == 0 ) {
-			continue;
+	private function parseLS($str) {
+		$a = preg_split("/\s+/", $str);
+		$r = array();
+
+		$type = "file";
+		if( $a[0][0] == 'd') {
+			$type = "dir";
 		}
-		$r = parseLS($val);
-		print "<tr>\n";
-		foreach($r as $key => $v) {
-			if( $key == "name") {
-				if( $r['type'] == "dir") {
-					$v = addLink($r['fullpath'], $v);
-				}
-				else{
-					$v = addFileLink($r['fullpath'], $v);
-				}
-			}
-			else if( $key == "fullpath") {
+		$r['type'] = $type;
+
+		$r['fullpath'] = $a[7];
+		$names = explode('/', $r['fullpath']);
+		$r['name'] = $names[ count($names) -1 ];
+		$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
+		$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
+
+		$r['permission'] = substr($a[0], 1);
+		$r['replication'] = $a[1];
+		$r['owner'] = $a[2];
+		$r['group'] = $a[3];
+		$r['size'] = $a[4];
+		$r['modified'] = $a[5] . " " . $a[6];
+		return $r;
+	}
+	private function convertToHumanReadableSize($size)
+	{
+		if($size == "") {
+			return $size;
+		}
+		$filesizename = array(" Bytes", " KB", " MB", " GB", " TB", " PB", " EB", " ZB", " YB");
+		return $size ? round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $filesizename[$i] : '0 Bytes';
+	}
+
+	public function postVar($key) {
+		return urldecode($_POST[$key]);
+	}
+
+	private function addLink($dir, $name) {
+		return "<a href=?dir=$dir>$name</a>";
+	}
+
+	private function addFileLink($dir, $name) {
+		return "<a href=\"javascript:viewFile('$dir')\">$name</a>";
+	}
+
+	public function splitPathAndAddLink($path) {
+		$r = $this->addLink("/", "ROOT /");
+		$a = explode("/", $path);
+		$path = "";
+		$delim = "";
+		foreach( $a as $v ) {
+			if( $v == "") {
 				continue;
 			}
-			else if( $key == "size") {
-				if( $r['type'] == "file") {
-					$v = file_size($v);
-				}
-			}
-			print "<td> $v </td>\n";
+			$path .= "/" . $v;
+			$r .= $delim . $this->addLink($path, $v);
+			$delim = "/";
 		}
-		print "</tr>\n";
-	} 
-	print "</table>";
+		return $r;
+	}
+
+	public function fs_ls($path) {
+		print "<table class=grid>\n";
+		print "<tr>
+		<th class=type> Type </th>
+		<th class=name width=300> Name </th>
+		<th class=permissions> Operations </th>
+		<th class=permissions> Permissions </th>
+		<th class=replications> Replicates </th>
+		<th class=owner> Owner </th>
+		<th class=group> Group </th>
+		<th class=blockSize> Block Size </th>
+		<th class=modified> Modified </th>
+		</tr>\n";
+		$outputStr = $this->hadoop_cmd("fs", "ls", $path); 
+		$output = explode("\n", substr($outputStr, 0, -1));
+
+		foreach($output as $val) {
+			if( strncmp("Found", $val, 5) == 0 ) {
+				continue;
+			}
+			$r = $this->parseLS($val);
+			print "<tr>\n";
+			foreach($r as $key => $v) {
+				if( $key == "name") {
+					if( $r['type'] == "dir") {
+						$v = $this->addLink($r['fullpath'], $v);
+					}
+					else{
+						$v = $this->addFileLink($r['fullpath'], $v);
+					}
+				}
+				else if( $key == "fullpath") {
+					continue;
+				}
+				else if( $key == "size") {
+					if( $r['type'] == "file") {
+						$v = $this->convertToHumanReadableSize($v);
+					}
+				}
+				print "<td> $v </td>\n";
+			}
+			print "</tr>\n";
+		} 
+		print "</table>";
+	}
+
 }
-
-
+$hadoop = new Hadoop();
+if($hadoop->cmd(getVar('cmd1'), getVar('cmd2'), getVar('params'))){
+	return;
+}
 
 ?>
 <html>
@@ -354,12 +279,12 @@ $(function() {
 		width:800,
 		height:500,
 		buttons: { 
-			"rawView": function() { viewFile('viewFile', gfilepath, goffset, glen);},
+			"rawView": function() { viewFile(gfilepath, goffset, glen);},
 			"close": function() { $(this).dialog("close") }
 		}
 	});
 
-	loadFileList('<?=$dir?>');
+	loadFileList(dir);
 
 	setDialog("#deleteDialog", openDeleteDialog, "Delete all items", deleteItem);
 	setDialog("#renameDialog", openRenameDialog, "OK", renameItem);
@@ -465,9 +390,9 @@ function renameItem() {
 	var originalFilePath  = $(this).attr('originalFilePath');
 	var targetFileName = $('#targetFileName').val();
 	var targetFilePath = baseName + targetFileName;
-	var url = '?command=renameFile&before='+originalFilePath + '&after='+ targetFilePath;
+	var url = '?cmd1=fs&cmd2=mv&params='+originalFilePath + '%20'+ targetFilePath;
 	$.get(url, function(data) {
-		loadFileList('<?=$dir?>');
+		loadFileList(dir);
 	});
 }
 
@@ -479,15 +404,15 @@ function deleteItem() {
 	$( this ).dialog( "close" );
 	$( "#hdfswait" ).show();
 	var path = $( "#deleteDialog").html();
-	$.get('?command=deleteFile&filepath='+path, function() {
-		loadFileList('<?=$dir?>');
+	$.get('?cmd1=fs&cmd2=rmr&params='+path, function() {
+		loadFileList(dir);
 	});
 }
 
 
 
 function loadFileList(dir) {
-	url = '?command=viewDir&dir='+dir;
+	url = '?cmd1=fs&cmd2=ls&params='+dir;
 	$('#hdfs').load(url, function() {
 
 		//image overlay effect
@@ -506,7 +431,7 @@ function loadFileList(dir) {
 		});
 
 		//file management
-		$( ".operations").click(function(e) {
+		$(".operations").click(function(e) {
 			var path = $(this).attr('path');
 			var command = $(this).attr('command');
 			
@@ -523,8 +448,8 @@ function loadFileList(dir) {
 
 
 
-function viewFile(command, filepath, offset, len) {
-	url = '?command='+command+'&filepath='+filepath;
+function viewFile(filepath, offset, len) {
+	url = '?cmd1=fs&cmd2=text&params='+filepath;
 	gfilepath = filepath;
 	if( offset != null ){ 
 		url += '&offset='+offset;
@@ -537,16 +462,10 @@ function viewFile(command, filepath, offset, len) {
 
 	$( "#wait" ).show();
 	$( "#dialog" ).dialog( "open" );
-	if( command == 'viewFile') {
-		$('#content').html('<textarea id=rawData readonly></textarea>');
-		$('#rawData').load(url, function() {
-			$( "#wait" ).hide();
-		});
-	} 
-	else {
-		$('#content').html('<iframe width=100% height=98% src='+url+'></iframe>');
+	$('#content').html('<textarea id=rawData readonly></textarea>');
+	$('#rawData').load(url, function() {
 		$( "#wait" ).hide();
-	}
+	});
 }
 
 </script>
@@ -571,7 +490,7 @@ These items will be permanently deleted and cannot be recovered. Are you sure?</
 
 <?
 $path = getCurrentPath();
-echo "Contents of directory " . splitPathAndAddLink($path);
+echo "Contents of directory " . $hadoop->splitPathAndAddLink($path);
 ?>
 <BR>
 <button id="pigStatus" >pigStatus</button>
