@@ -33,46 +33,220 @@ function getVar($key, $default=null) {
     return null;
 }
 
-require_once("./PigRunner.php");
 
 /*
-if( $command == "viewfile") {
-	showFile(getVar("filepath"), getVar("offset"), getVar("len"));
-	exit(0);
+function getMetaFilePath($filePath ) {
+	$arr = explode("/", $filePath);
+	$metaPath = "";
+	$count = count($arr);
+	for($i = 0; $i < $count ; $i++ ) {
+		if( $i == $count -1 ) {
+			$metaPath .= ".";
+		}
+		$metaPath .= $arr[$i];
+		if( $i == $count -1 ) {
+			$metaPath .= ".meta";
+		}
+		else{
+			$metaPath .= "/";
+		}
+	}
+	return $metaPath;
 }
-else if( $command == "viewjsonfile") {
-	showJsonFile(getVar("filepath"), getVar("offset"), getVar("len"));
-	exit(0);
+
+
+function executePig($input, $output, $columns, $condition) {
+	global $HADOOP_HOME;
+	global $PIG_HOME;
+	$jobName = "PigFilter:$input||$output";
+	$arr = array("--inputPath", $input, "--outputPath", $output,  "--loadAs", $columns, 
+		"--filterBy", $condition, "--hadoopHome", $HADOOP_HOME, "--pigHome", $PIG_HOME,
+		"--jobName", $jobName);
+	new PigFilterScriptBuilder($arr);
 }
-else if( $command == "viewdir") {
-	printDir($dir);
-	exit(0);
-}
-else if( $command == "viewgrid") {
-	printGrid(getVar("filepath"), getVar("offset"), getVar("len"));
-	exit(0);
-}
-else if( $command == "savemeta") {
-	saveMeta(getVar("filepath"), postVar("json"));
-	exit(0);
-}
-else if( $command == "deletefile") {
-	deleteFile(getVar("filepath"));
-	exit(0);
-}
-else if( $command == "renamefile") {
-	renameFile(getVar("before"), getVar("after"));
-	exit(0);
-}
-else if( $command == "executepig") {
-	executePig(postVar("inputPath"), postVar("outputPath"), postVar("columns"), postVar("condition"));
-	exit(0);
-}
-else if( $command == "viewpigjob") {
-	viewPigJob(getVar("inputPath"));
-	exit(0);
+
+
+function saveMeta($filePath, $json) {
+	global $HADOOP_HOME;
+	$metaFilePath = getMetaFilePath($filePath);
+	hadoop("hadoop fs -rm $metaFilePath");
+	$r = shell_exec("echo '$json' | $HADOOP_HOME/bin/hadoop fs -put - $metaFilePath");
+	print $metaFilePath;
 }
 */
+function viewPigJob($input) {
+	$user = exec("whoami");
+	//$lines = hadoop("hadoop JobList $user | grep PigFilter:$input | sort -r");
+	$lines = hadoop("hadoop JobList $user");
+	$lines = substr($lines, 0, -1);
+	$arr = explode("\n", $lines);
+	$result = array();
+	foreach($arr as $line) {
+		$result[] = explode("\t", $line);
+	}
+	$data = array();
+	if( strlen($lines) == 0 ) {
+		$data['count'] = 0;
+	}
+	else{
+		$data['count'] = count($arr);
+	}
+	$data['data'] = $result;
+
+	$json = json_encode($data);
+	print $json;
+}
+
+function viewFile(){
+	$filePath = getVar('filepath');
+	$offset = getVar('offset');
+	$len = getVar('len');
+	$r = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
+	echo $r;
+}
+function showJsonFile($filePath, $offset, $len) {
+	$csv = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
+	print convertToJson($csv);
+}
+function convertToJson($csv) {
+	$csv = substr($csv, 0, -1);
+	$arr = array_map("getcsv", explode("\n", $csv) );
+	return json_encode( array("rows" => $arr) ) ;
+}
+
+function hadoop($command, $beforeCommand="", $afterCommand="") {
+	global $HADOOP_HOME;
+	if( strlen($beforeCommand) > 0 ) {
+		$beforeCommand .= ";";
+	}
+	return shell_exec("$beforeCommand export HADOOP_CLASSPATH=.;$HADOOP_HOME/bin/$command; $afterCommand"); 
+}
+function deleteFile() {
+	$filePath = getVar("filepath");
+	print hadoop("hadoop fs -rm $filePath");
+}
+function renameFile() {
+	$before = getVar("before");
+	$after  = getVar("after");
+	$cmd = "hadoop fs -mv $before $after";
+	print $cmd;
+	print hadoop($cmd);
+}
+function parseLS($str) {
+	$a = preg_split("/\s+/", $str);
+	$r = array();
+
+	$type = "file";
+	if( $a[0][0] == 'd') {
+		$type = "dir";
+	}
+	$r['type'] = $type;
+
+	$r['fullpath'] = $a[7];
+	$names = explode('/', $r['fullpath']);
+	$r['name'] = $names[ count($names) -1 ];
+	$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
+	$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
+
+	$r['permission'] = substr($a[0], 1);
+	$r['replication'] = $a[1];
+	$r['owner'] = $a[2];
+	$r['group'] = $a[3];
+	$r['size'] = $a[4];
+	$r['modified'] = $a[5] . " " . $a[6];
+	return $r;
+}
+function file_size($size)
+{
+	if($size == "") {
+		return $size;
+	}
+	$filesizename = array(" Bytes", " KB", " MB", " GB", " TB", " PB", " EB", " ZB", " YB");
+	return $size ? round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $filesizename[$i] : '0 Bytes';
+}
+
+function postVar($key) {
+	return urldecode($_POST[$key]);
+}
+
+function addLink($dir, $name) {
+	return "<a href=?dir=$dir>$name</a>";
+}
+
+function addFileLink($dir, $name) {
+	return "<a href=\"javascript:viewFile('viewFile', '$dir')\">$name</a>";
+}
+
+function getCurrentPath() {
+	$path= $_GET['dir'];
+	if( $path == null || $path == "") {
+		$path = "/";
+	}
+	return $path;
+}
+function splitPathAndAddLink($path) {
+	$r = addLink("/", "ROOT /");
+	$a = explode("/", $path);
+	$path = "";
+	$delim = "";
+	foreach( $a as $v ) {
+		if( $v == "") {
+			continue;
+		}
+		$path .= "/" . $v;
+		$r .= $delim . addLink($path, $v);
+		$delim = "/";
+	}
+	return $r;
+}
+
+function viewDir() {
+	$path =  getCurrentPath();
+	print "<table class=grid>\n";
+	print "<tr>
+	<th class=type> Type </th>
+	<th class=name width=300> Name </th>
+	<th class=permissions> Operations </th>
+	<th class=permissions> Permissions </th>
+	<th class=replications> Replicates </th>
+	<th class=owner> Owner </th>
+	<th class=group> Group </th>
+	<th class=blockSize> Block Size </th>
+	<th class=modified> Modified </th>
+	</tr>\n";
+	$outputStr = hadoop("hadoop fs -ls $path"); 
+	$output = explode("\n", substr($outputStr, 0, -1));
+
+	foreach($output as $val) {
+		if( strncmp("Found", $val, 5) == 0 ) {
+			continue;
+		}
+		$r = parseLS($val);
+		print "<tr>\n";
+		foreach($r as $key => $v) {
+			if( $key == "name") {
+				if( $r['type'] == "dir") {
+					$v = addLink($r['fullpath'], $v);
+				}
+				else{
+					$v = addFileLink($r['fullpath'], $v);
+				}
+			}
+			else if( $key == "fullpath") {
+				continue;
+			}
+			else if( $key == "size") {
+				if( $r['type'] == "file") {
+					$v = file_size($v);
+				}
+			}
+			print "<td> $v </td>\n";
+		}
+		print "</tr>\n";
+	} 
+	print "</table>";
+}
+
 
 
 ?>
@@ -180,7 +354,7 @@ $(function() {
 		width:800,
 		height:500,
 		buttons: { 
-			"rawView": function() { viewfile('viewfile', gfilepath, goffset, glen);},
+			"rawView": function() { viewFile('viewFile', gfilepath, goffset, glen);},
 			"close": function() { $(this).dialog("close") }
 		}
 	});
@@ -232,7 +406,7 @@ function percentConverter(ratio) {
 
 function openPigStatusDialog(event, ui) {
 	$( "#hdfswait" ).show();
-	$.get('?command=viewpigjob&inputPath='+dir, 
+	$.get('?command=viewPigJob&inputPath='+dir, 
 		function (data){
 			var statusList = ['RUNNING', 'SUCCEEDED', 'FAILED', 'PREP', 'KILLED'];
 			var html  = '<table style=\"font-size:8pt\" align=center border=1><tr align=center><td>Job ID</td>';
@@ -298,14 +472,14 @@ function renameItem() {
 }
 
 function openDeleteDialog() {
-	//$( "#deleteDialog").html(path);
+	$( "#deleteDialog").html(path);
 }
 
 function deleteItem() {
 	$( this ).dialog( "close" );
 	$( "#hdfswait" ).show();
 	var path = $( "#deleteDialog").html();
-	$.get('?command=deletefile&filepath='+path, function() {
+	$.get('?command=deleteFile&filepath='+path, function() {
 		loadFileList('<?=$dir?>');
 	});
 }
@@ -349,7 +523,7 @@ function loadFileList(dir) {
 
 
 
-function viewfile(command, filepath, offset, len) {
+function viewFile(command, filepath, offset, len) {
 	url = '?command='+command+'&filepath='+filepath;
 	gfilepath = filepath;
 	if( offset != null ){ 
@@ -363,7 +537,7 @@ function viewfile(command, filepath, offset, len) {
 
 	$( "#wait" ).show();
 	$( "#dialog" ).dialog( "open" );
-	if( command == 'viewfile') {
+	if( command == 'viewFile') {
 		$('#content').html('<textarea id=rawData readonly></textarea>');
 		$('#rawData').load(url, function() {
 			$( "#wait" ).hide();
@@ -396,216 +570,6 @@ These items will be permanently deleted and cannot be recovered. Are you sure?</
 
 
 <?
-function viewfile(){
-	$filePath = getVar('filepath');
-	$offset = getVar('offset');
-	$len = getVar('len');
-	$r = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
-	echo $r;
-}
-function showJsonFile($filePath, $offset, $len) {
-	$csv = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
-	print convertToJson($csv);
-}
-function convertToJson($csv) {
-	$csv = substr($csv, 0, -1);
-	$arr = array_map("getcsv", explode("\n", $csv) );
-	return json_encode( array("rows" => $arr) ) ;
-}
-
-function hadoop($command, $beforeCommand="", $afterCommand="") {
-	global $HADOOP_HOME;
-	if( strlen($beforeCommand) > 0 ) {
-		$beforeCommand .= ";";
-	}
-	return shell_exec("$beforeCommand export HADOOP_CLASSPATH=.;$HADOOP_HOME/bin/$command; $afterCommand"); 
-}
-function getMetaFilePath($filePath ) {
-	$arr = explode("/", $filePath);
-	$metaPath = "";
-	$count = count($arr);
-	for($i = 0; $i < $count ; $i++ ) {
-		if( $i == $count -1 ) {
-			$metaPath .= ".";
-		}
-		$metaPath .= $arr[$i];
-		if( $i == $count -1 ) {
-			$metaPath .= ".meta";
-		}
-		else{
-			$metaPath .= "/";
-		}
-	}
-	return $metaPath;
-}
-
-/*
-function viewPigJob($input) {
-	$user = exec("whoami");
-	$lines = hadoop("hadoop JobList $user | grep PigFilter:$input | sort -r");
-	$lines = substr($lines, 0, -1);
-	$arr = explode("\n", $lines);
-	$result = array();
-	foreach($arr as $line) {
-		$result[] = explode("\t", $line);
-	}
-	$data = array();
-	if( strlen($lines) == 0 ) {
-		$data['count'] = 0;
-	}
-	else{
-		$data['count'] = count($arr);
-	}
-	$data['data'] = $result;
-
-	$json = json_encode($data);
-	print $json;
-}
-
-function executePig($input, $output, $columns, $condition) {
-	global $HADOOP_HOME;
-	global $PIG_HOME;
-	$jobName = "PigFilter:$input||$output";
-	$arr = array("--inputPath", $input, "--outputPath", $output,  "--loadAs", $columns, 
-		"--filterBy", $condition, "--hadoopHome", $HADOOP_HOME, "--pigHome", $PIG_HOME,
-		"--jobName", $jobName);
-	new PigFilterScriptBuilder($arr);
-}
-*/
-function deleteFile($filePath ) {
-	print hadoop("hadoop fs -rm $filePath");
-}
-function renameFile() {
-	$before = getVar("before");
-	$after  = getVar("after");
-	$cmd = "hadoop fs -mv $before $after";
-	print $cmd;
-	print hadoop($cmd);
-}
-
-function saveMeta($filePath, $json) {
-	global $HADOOP_HOME;
-	$metaFilePath = getMetaFilePath($filePath);
-	hadoop("hadoop fs -rm $metaFilePath");
-	$r = shell_exec("echo '$json' | $HADOOP_HOME/bin/hadoop fs -put - $metaFilePath");
-	print $metaFilePath;
-}
-
-function parseLS($str) {
-	$a = preg_split("/\s+/", $str);
-	$r = array();
-
-	$type = "file";
-	if( $a[0][0] == 'd') {
-		$type = "dir";
-	}
-	$r['type'] = $type;
-
-	$r['fullpath'] = $a[7];
-	$names = explode('/', $r['fullpath']);
-	$r['name'] = $names[ count($names) -1 ];
-	$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
-	$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
-
-	$r['permission'] = substr($a[0], 1);
-	$r['replication'] = $a[1];
-	$r['owner'] = $a[2];
-	$r['group'] = $a[3];
-	$r['size'] = $a[4];
-	$r['modified'] = $a[5] . " " . $a[6];
-	return $r;
-}
-function file_size($size)
-{
-	if($size == "") {
-		return $size;
-	}
-	$filesizename = array(" Bytes", " KB", " MB", " GB", " TB", " PB", " EB", " ZB", " YB");
-	return $size ? round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $filesizename[$i] : '0 Bytes';
-}
-
-function postVar($key) {
-	return urldecode($_POST[$key]);
-}
-
-function addLink($dir, $name) {
-	return "<a href=?dir=$dir>$name</a>";
-}
-
-function addFileLink($dir, $name) {
-	return "<a href=\"javascript:viewfile('viewfile', '$dir')\">$name</a>";
-}
-
-function getCurrentPath() {
-	$path= $_GET['dir'];
-	if( $path == null || $path == "") {
-		$path = "/";
-	}
-	return $path;
-}
-function splitPathAndAddLink($path) {
-	$r = addLink("/", "ROOT /");
-	$a = explode("/", $path);
-	$path = "";
-	$delim = "";
-	foreach( $a as $v ) {
-		if( $v == "") {
-			continue;
-		}
-		$path .= "/" . $v;
-		$r .= $delim . addLink($path, $v);
-		$delim = "/";
-	}
-	return $r;
-}
-
-function viewDir() {
-	$path =  getCurrentPath();
-	print "<table class=grid>\n";
-	print "<tr>
-	<th class=type> Type </th>
-	<th class=name width=300> Name </th>
-	<th class=permissions> Operations </th>
-	<th class=permissions> Permissions </th>
-	<th class=replications> Replicates </th>
-	<th class=owner> Owner </th>
-	<th class=group> Group </th>
-	<th class=blockSize> Block Size </th>
-	<th class=modified> Modified </th>
-	</tr>\n";
-	$outputStr = hadoop("hadoop fs -ls $path"); 
-	$output = explode("\n", substr($outputStr, 0, -1));
-
-	foreach($output as $val) {
-		if( strncmp("Found", $val, 5) == 0 ) {
-			continue;
-		}
-		$r = parseLS($val);
-		print "<tr>\n";
-		foreach($r as $key => $v) {
-			if( $key == "name") {
-				if( $r['type'] == "dir") {
-					$v = addLink($r['fullpath'], $v);
-				}
-				else{
-					$v = addFileLink($r['fullpath'], $v);
-				}
-			}
-			else if( $key == "fullpath") {
-				continue;
-			}
-			else if( $key == "size") {
-				if( $r['type'] == "file") {
-					$v = file_size($v);
-				}
-			}
-			print "<td> $v </td>\n";
-		}
-		print "</tr>\n";
-	} 
-	print "</table>";
-}
-
 $path = getCurrentPath();
 echo "Contents of directory " . splitPathAndAddLink($path);
 ?>
