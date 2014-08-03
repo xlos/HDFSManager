@@ -1,12 +1,10 @@
 <?
 $HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
-$PIG_HOME="/home/hdfs/pig";
 $FILE_LEN=32768;
 error_reporting(E_ALL & ~E_NOTICE);
-$mode = getVar("mode");
+$command = getVar("command");
 $dir =  getCurrentPath();
 
-/*
 $fun = trim($_GET['command']);
 if( strlen($fun) > 0 ) { 
     call_user_func($fun);
@@ -25,47 +23,47 @@ function getVar($key, $default=null) {
     }   
     return null;
 }
-*/
 
 require_once("./PigRunner.php");
 
-if( $mode == "viewfile") {
+/*
+if( $command == "viewfile") {
 	showFile(getVar("filepath"), getVar("offset"), getVar("len"));
 	exit(0);
 }
-else if( $mode == "viewjsonfile") {
+else if( $command == "viewjsonfile") {
 	showJsonFile(getVar("filepath"), getVar("offset"), getVar("len"));
 	exit(0);
 }
-else if( $mode == "viewdir") {
+else if( $command == "viewdir") {
 	printDir($dir);
 	exit(0);
 }
-else if( $mode == "viewgrid") {
+else if( $command == "viewgrid") {
 	printGrid(getVar("filepath"), getVar("offset"), getVar("len"));
 	exit(0);
 }
-else if( $mode == "savemeta") {
+else if( $command == "savemeta") {
 	saveMeta(getVar("filepath"), postVar("json"));
 	exit(0);
 }
-else if( $mode == "deletefile") {
+else if( $command == "deletefile") {
 	deleteFile(getVar("filepath"));
 	exit(0);
 }
-else if( $mode == "renamefile") {
+else if( $command == "renamefile") {
 	renameFile(getVar("before"), getVar("after"));
 	exit(0);
 }
-else if( $mode == "executepig") {
+else if( $command == "executepig") {
 	executePig(postVar("inputPath"), postVar("outputPath"), postVar("columns"), postVar("condition"));
 	exit(0);
 }
-else if( $mode == "viewpigjob") {
+else if( $command == "viewpigjob") {
 	viewPigJob(getVar("inputPath"));
 	exit(0);
 }
-
+*/
 
 
 ?>
@@ -174,7 +172,6 @@ $(function() {
 		height:500,
 		buttons: { 
 			"rawView": function() { viewfile('viewfile', gfilepath, goffset, glen);},
-			"gridView": function() { viewfile('viewgrid', gfilepath, goffset, glen);},
 			"close": function() { $(this).dialog("close") }
 		}
 	});
@@ -226,7 +223,7 @@ function percentConverter(ratio) {
 
 function openPigStatusDialog(event, ui) {
 	$( "#hdfswait" ).show();
-	$.get('?mode=viewpigjob&inputPath='+dir, 
+	$.get('?command=viewpigjob&inputPath='+dir, 
 		function (data){
 			var statusList = ['RUNNING', 'SUCCEEDED', 'FAILED', 'PREP', 'KILLED'];
 			var html  = '<table style=\"font-size:8pt\" align=center border=1><tr align=center><td>Job ID</td>';
@@ -285,7 +282,7 @@ function renameItem() {
 	var originalFilePath  = $(this).attr('originalFilePath');
 	var targetFileName = $('#targetFileName').val();
 	var targetFilePath = baseName + targetFileName;
-	var url = '?mode=renamefile&before='+originalFilePath + '&after='+ targetFilePath;
+	var url = '?command=renamefile&before='+originalFilePath + '&after='+ targetFilePath;
 	$.get(url, function(data) {
 		loadFileList('<?=$dir?>');
 	});
@@ -299,7 +296,7 @@ function deleteItem() {
 	$( this ).dialog( "close" );
 	$( "#hdfswait" ).show();
 	var path = $( "#deleteDialog").html();
-	$.get('?mode=deletefile&filepath='+path, function() {
+	$.get('?command=deletefile&filepath='+path, function() {
 		loadFileList('<?=$dir?>');
 	});
 }
@@ -307,8 +304,7 @@ function deleteItem() {
 
 
 function loadFileList(dir) {
-//$url =  $_SERVER["SCRIPT_NAME"] . "?mode=viewdir&dir=$dir";
-	url = '?mode=viewdir&dir='+dir;
+	url = '?command=viewDir&dir='+dir;
 	$('#hdfs').load(url, function() {
 
 		//image overlay effect
@@ -344,8 +340,8 @@ function loadFileList(dir) {
 
 
 
-function viewfile(mode, filepath, offset, len) {
-	url = '?mode='+mode+'&filepath='+filepath;
+function viewfile(command, filepath, offset, len) {
+	url = '?command='+command+'&filepath='+filepath;
 	gfilepath = filepath;
 	if( offset != null ){ 
 		url += '&offset='+offset;
@@ -358,7 +354,7 @@ function viewfile(mode, filepath, offset, len) {
 
 	$( "#wait" ).show();
 	$( "#dialog" ).dialog( "open" );
-	if( mode == 'viewfile') {
+	if( command == 'viewfile') {
 		$('#content').html('<textarea id=rawData readonly></textarea>');
 		$('#rawData').load(url, function() {
 			$( "#wait" ).hide();
@@ -390,14 +386,11 @@ These items will be permanently deleted and cannot be recovered. Are you sure?</
 
 
 
-
-
-
-
-
-
 <?
-function showFile($filePath, $offset, $len) {
+function viewfile(){
+	$filePath = getVar('filepath');
+	$offset = getVar('offset');
+	$len = getVar('len');
 	$r = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
 	echo $r;
 }
@@ -527,392 +520,6 @@ function saveMeta($filePath, $json) {
 	$r = shell_exec("echo '$json' | $HADOOP_HOME/bin/hadoop fs -put - $metaFilePath");
 	print $metaFilePath;
 }
-function printGrid($filePath, $offset, $len) {
-	$metaFilePath = getMetaFilePath($filePath);
-	$meta = hadoop("hadoop fs -cat $metaFilePath");
-	//echo $metaFilePath;
-	$r = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
-	if( trim($meta) == "" ) {
-		$i = strpos($r, "\n");
-		$firstline = substr($r, 0, $i);
-		$a = explode(",", $firstline);
-		$size = count($a);
-		$colModel = "[".repeatString('{"name":"col', '"}',$size, true) ."]";
-	}
-	else {
-		$colModel = substr($meta, 0, -1);
-	}
-	$json = convertToJson($r);
-
-?>
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>ViewGrid</title>
- 
-<link rel="stylesheet" type="text/css" media="screen" href="jquery-ui.css" />
-<link rel="stylesheet" type="text/css" media="screen" href="grid/css/ui.jqgrid.css" />
- 
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    font-size: 75%;
-}
-td.perc_filled {
-	background-color: #AAAAFF;
-}
-td.perc_nonfilled {
-	background-color: #FFFFFF;
-}
-</style>
-
-
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
-<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js" type="text/javascript"></script>
-<script src="grid/js/grid.locale-en.js" type="text/javascript"></script>
-<script src="grid/js/jquery.jqGrid.min.js" type="text/javascript"></script>
-<script type="text/javascript">
-
-
-var filePath = "<?=$filePath?>";
-
-$(function(){ 
-	var colModel = eval('<?=$colModel?>');
-	$("#list").jqGrid({
-		datatype: 'json',
-		//colModel : <?=$colModel?>,
-		colModel : colModel,
-		//define a template of column model
-		//cmTemplate:{sortable:true, width:100, searchoptions:{sopt:['eq','ne','lt','le','gt','ge','bw','bn','in','ni','ew','en','cn','nc']}},
-		cmTemplate:{sortable:true, width:100},
-		loadonce:true,
-		sortable:true,
-		jsonReader:{
-			repeatitems:true
-		},
-		pager: '#pager',
-		rowNum:2000,
-		rowList:[1000,2000,3000],
-		viewrecords: true,
-		autowidth:true,
-		shrinkToFit: true,
-		gridview: true,
-		caption: 'Grid View',
-		//width:'50%',
-		//height:'50%',
-	}); 
-
-	$("#list").jqGrid('filterToolbar', 'autosearch');
-	$("#list").jqGrid('navGrid', '#pager',
-		{edit:false,add:false,del:false},
-		{},
-		{},
-		{},
-		{multipleSearch:true, multipleGroup:true, showQuery: true, recreateFilter:true}
-	);
-	//insert data to gird
-	var json = eval('(<?=$json?>)');
-	var grid = $("#list")[0];
-	grid.addJSONData(json);
-	$("#list").setGridParam({datatype:'local'});
-	json = null;
-	resizeStuff();
-
-
-	$("#changeMetaDialog").dialog({ 
-		resizable:false, 
-		autoOpen:false,
-		width:'85%',
-		height:350,
-		buttons: { 
-			"Save": function() { saveMeta('#meta', '#list');},
-			"Close": function() { $(this).dialog("close") }
-		},
-		open : changeMeta
-	});
-
-	$("#pigDialog").dialog({ 
-		resizable:true, 
-		autoOpen:false,
-		width:'80%',
-		height:300,
-		buttons: { 
-			"Execute": function() { executePig();},
-			"Close": function() { $(this).dialog("close") }
-		},
-		open : openPigDialog
-	});
-
-	$("#pigStatusDialog").dialog({ 
-		resizable:true, 
-		autoOpen:false,
-		width:'70%',
-		height:250,
-		buttons: { 
-			"Refresh": function() { openPigStatusDialog();},
-			"Close": function() { $(this).dialog("close") }
-		},
-		open : openPigStatusDialog
-	});
-
-	$("button").button().click( function() {
-		$( '#' + $(this).attr('id') + 'Dialog').dialog("open"); 
-	});
-	
-}); 
-
-function executePig() {
-	$( "#hdfswait" ).show();
-
-	var input = $('#pigInputPath').val();
-	var output = $('#pigOutputPath').val();
-	var columns = '('+$('#pigColumns').val() + ')';
-	var condition = $('#pigCondition').val();
-
-	$.post('?mode=executepig', 
-		{ inputPath: input, outputPath: output, columns:columns, condition:condition},
-		function (data){
-			$( "#hdfswait" ).hide();
-			$( '#pigStatusDialog').dialog("open");
-			setTimeout( "openPigStatusDialog()", 5000);
-		}
-	);
-
-}
-function timeConverter(UNIX_timestamp){
-	var a = new Date(parseFloat(UNIX_timestamp));
-    var year = a.getFullYear();
-    var month = a.getMonth() + 1;
-    var date = a.getDate();
-    var hour = a.getHours();
-    var min = a.getMinutes();
-    var sec = a.getSeconds();
-    var time = year + '.' + month+'.'+date+' '+hour+':'+min+':'+sec ;
-	return a.toLocaleString();
-    //return time;
-}
-function percentConverter(ratio) {
-	var percent = ratio *100.0;
-	var remain = 100 - percent;
-	var html = percent + '%';
-	html += '<table width=\"80px\" border = \"1px\">';
-	html += '<tr><td class=\"perc_filled\" width=\"'+percent+'%\" cellspacing=0></td>';
-	html += '<td class=\"perc_nonfilled\" width=\"'+remain+'%\" cellspacing=0></td>';
-	html += '</tr></table>';
-	return html;
-}
-
-function openPigStatusDialog(event, ui) {
-	$( "#hdfswait" ).show();
-	$.get('?mode=viewpigjob&inputPath='+filePath, 
-		function (data){
-			var statusList = ['RUNNING', 'SUCCEEDED', 'FAILED', 'PREP', 'KILLED'];
-			var html  = '<table style=\"font-size:8pt\" align=center border=1><tr align=center><td>Job ID</td>';
-			html += '<td>Status</td><td>Output</td><td>Started at</td>';
-			html += '<td>Map % Complete</td><td>Reduce % Complete</td></tr>';
-			var val = JSON.parse(data);
-			for( i = 0; i < val.count; i++ ) {
-				var date = timeConverter(val.data[i][2]);
-				var jobStatus = statusList[parseInt(val.data[i][1]) - 1];
-				var jobID = '<a href=\"'+val.data[i][9]+'\" target=_blank>';
-				jobID += val.data[i][0] + '</a>';
-				var jobName = val.data[i][8];
-				var output = jobName.split("||")[1];
-
-				html += '<tr title=\"' + jobName + '\">';
-				html += '<td>' + jobID + '</td>';
-				html += '<td>' + jobStatus + '</td>';
-				html += '<td><a href="?dir=' + output +'" target=_blank>' + output + '</a></td>';
-				html += '<td>' + date + '</td>';
-				html += '<td>' + percentConverter(val.data[i][6]) + '</td>';
-				html += '<td>' + percentConverter(val.data[i][7]) + '</td>';
-				html += '</tr>';
-			}
-			html += '</table>';
-			$( '#pigStatusDialog').html(html);
-			$( "#hdfswait" ).hide();
-		}
-	);
-}
-function openPigDialog(event, ui) {
-	$('#pigInputPath').val(filePath);
-	$('#pigOutputPath').val(filePath + '.out');
-	var colNames = '';
-	var colModel = $('#list').jqGrid('getGridParam', 'colModel');
-	for( i in colModel ) {
-		if( i != 0 ) {
-			colNames += ',';
-		}
-		colNames += colModel[i].name;
-	}
-	//var colNames = $("#list").jqGrid ('getGridParam', 'colNames');
-	$('#pigColumns').val(colNames);
-	var condition = $('div.searchFilter > table > tbody > tr > td.query').text();
-	$('#pigCondition').html( condition );
-}
-function resizeStuff() {
-	//$( "#hdfswait" ).show();
-	var w = $(window).width();
-	var h = $(window).height();
-	$("#list").setGridWidth(w-20);
-	$("#list").setGridHeight(h-125);
-	w *= 0.9;
-	h = 300;
-	$("#changeMetaDialog").dialog('option', 'width', w);
-	$("#meta").setGridWidth(w-20);
-}
-var TO = false;
-$(window).resize(function(){
-	if(TO !== false)
-	clearTimeout(TO);
-	TO = setTimeout(resizeStuff, 100); 
-});
-
-var types = new Array('text', 'int', 'date');
-function getSelect(name, currentOption, i) {
-	var s = '<select id=meta_type_'+i+' class=typeSelector style="width:90%" colname=' + name + '>';
-	for( i in types) {
-		selected = '';
-		if( currentOption == types[i] ) {
-			selected = ' selected=selected ';
-		}
-		s += '<option ' + selected + '>' + types[i] + '</option>';
-	}
-	return s;
-}
-	
-function getMetaData(colModel, colNames) {
-	var input = {};
-	var select = {};
-	var desc = {};
-	for( i in colModel) {
-		model = colModel[i];
-		input[model.name] = '<input id=meta_label_'+i+' type=text value=\"' + colNames[i] + '\">';
-		select[model.name] = getSelect(model.name, model.sorttype, i);
-		if( model.desc == undefined) 
-			model.desc = '';
-		desc[model.name] = '<textarea style="width:100%;height:100px" id=meta_desc_'+i+'>'+model.desc+'</textarea>';
-	}
-	var data = new Array();
-	data['label'] = input;
-	data['type'] = select;
-	data['desc'] = desc;
-	return data;
-}
-
-
-function setDesc (grid, iColumn, text) {
-    var thd = jQuery("thead:first", grid[0].grid.hDiv)[0];
-    jQuery("tr.ui-jqgrid-labels th:eq(" + iColumn + ")", thd).attr("title", text);
-};
-
-function changeMeta(event, ui) {
-	var colNames = $("#list").jqGrid ('getGridParam', 'colNames');
-	var colModel = $("#list").jqGrid ('getGridParam', 'colModel');
-
-	for( i in colModel) {
-		colModel[i].sortable=false;
-	}
-
-
-	$("#meta").jqGrid({
-		datatype: "local",
-		autoWidth:true,
-		//shrinkToFit:true,
-		width: '80%',
-		height: 200,
-		colNames:colNames,
-		colModel:colModel,
-		sortable:false,
-		cmTemplate:{sortable:false, width:30}
-	});
-
-	$('#meta').jqGrid('clearGridData');
-	var data = getMetaData( colModel, colNames);
-	
-	for(i in data ) {
-		$("#meta").jqGrid('addRowData', i,  data[i]);
-	}
-	resizeStuff();
-	$( "#hdfswait" ).hide();
-}
-
-
-function saveMeta(from, to) {
-	$( "#hdfswait" ).show();
-
-	var fromGrid = $(from);
-	var toGrid = $(to);
-	var colModel = fromGrid.jqGrid('getGridParam', 'colModel');
-	for( i in colModel ) {
-		model = colModel[i];
-		label = $('#meta_label_'+i).val();
-		type = $('#meta_type_'+i).val();
-		desc = $('#meta_desc_'+i).val();
-
-		toGrid.jqGrid('setLabel', model.name, label);
-		fromGrid.jqGrid('setLabel', model.name, label);
-
-		toGrid.jqGrid('setColProp', model.name, {label:label, sorttype:type, desc:desc});
-		fromGrid.jqGrid('setColProp', model.name, {label:label, sorttype:type, desc:desc});
-		
-		//set description
-		setDesc(toGrid, i, desc);
-		setDesc(fromGrid, i, desc);
-	}
-
-	//save column model to hdfs file
-	colModel = toGrid.jqGrid('getGridParam', 'colModel');
-	var text = JSON.stringify(colModel, null);
-	$.post("<?=$_SERVER["SCRIPT_NAME"]?>?mode=savemeta&filepath="+filePath, 
-		{ json: text },
-		function (data){
-			alert('save meta file to : ' + data);
-			$( "#hdfswait" ).hide();
-		}
-	);
-}
-
-</script>
- 
-</head>
-<body>
-<div id="changeMetaDialog" title="Change Meta">
-	<table id="meta" width=100%><tr><td/></tr></table> 
-</div>
-
-<div id="pigDialog" title="Pig" style='display:none'>
-<table style='font-size:8pt'>
-<tr><td>Input Path </td><td> <input size=70 id=pigInputPath type=text> </td> </tr>
-<tr><td>Output Path </td><td> <input size=70 id=pigOutputPath type=text> </td> </tr>
-<tr><td>Columns </td><td> <input size=70 id=pigColumns readonly type=text></td></tr>
-<tr><td>Condition </td><td><textarea cols=70 height=200 id=pigCondition ></textarea> </td></tr>
-</table>
-</div>
-
-<div id="pigStatusDialog" title="PigStatus" style='display:none'>
-</div>
-
-
-
-
-<div class="buttons">
-<button id="changeMeta">Change Meta</button>
-<button id="pig" >pig</button>
-<button id="pigStatus" >pigStatus</button>
-</div>
-
-
-<table id="list"><tr><td/></tr></table> 
-<div id="pager"></div>  
- 
-<img id="hdfswait" src=images/wait.gif style="display:none;position:absolute;left:50%;top:200;z-index:2001">
-</body>
-</html>
-<?
-}
-
 
 function parseLS($str) {
 	$a = preg_split("/\s+/", $str);
@@ -952,26 +559,18 @@ function file_size($size)
 	return $size ? round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $filesizename[$i] : '0 Bytes';
 }
 
-function getVar($key) {
-	return $_GET[$key];
-}
 function postVar($key) {
 	return urldecode($_POST[$key]);
 }
 
 function addLink($dir, $name) {
-	return "<a href=".$_SERVER["SCRIPT_NAME"]."?dir=$dir>$name</a>";
+	return "<a href=?dir=$dir>$name</a>";
 }
 
 function addFileLink($dir, $name) {
 	return "<a href=\"javascript:viewfile('viewfile', '$dir')\">$name</a>";
 }
-/*
-function makeurl($mode, $path, $offset="", $len="") {
-	return $_SERVER["SCRIPT_NAME"]."?mode=$mode&filepath=$path&offset=$offset&len=$len";
-}
-*/
-	
+
 function getCurrentPath() {
 	$path= $_GET['dir'];
 	if( $path == null || $path == "") {
@@ -995,7 +594,8 @@ function splitPathAndAddLink($path) {
 	return $r;
 }
 
-function printDir($path) {
+function viewDir() {
+	$path =  getCurrentPath();
 	print "<table class=grid>\n";
 	print "<tr>
 	<th class=type> Type </th>
@@ -1052,6 +652,6 @@ echo "Contents of directory " . splitPathAndAddLink($path);
 <div id="pigStatusDialog" title="PigStatus" style='display:none'>
 </div>
 
-<img id="hdfswait" src=images/wait.gif style="position:relative;left:20%;top:200;z-index:100">
+<img id="hdfswait" src=images/wait.gif style="position:relative;left:40%;top:200;z-index:100">
 </body>
 </html>
