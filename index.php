@@ -1,4 +1,13 @@
 <?
+/*
+$HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
+$cmd = "$HADOOP_HOME/bin/hadoop fs -mv /home/ubuntu/user/temp /home/ubuntu/user/temp2";
+print $cmd;
+print shell_exec($cmd);
+//print exec($cmd);
+return 0;
+*/
+
 $HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
 $FILE_LEN=32768;
 error_reporting(E_ALL & ~E_NOTICE);
@@ -179,7 +188,7 @@ $(function() {
 	loadFileList('<?=$dir?>');
 
 	setDialog("#deleteDialog", openDeleteDialog, "Delete all items", deleteItem);
-	setDialog("#renameDialog", openRenameDialog, "Ok", renameItem);
+	setDialog("#renameDialog", openRenameDialog, "OK", renameItem);
 	setDialog("#pigStatusDialog", openPigStatusDialog, "Refresh", openPigStatusDialog);
 	$("#pigStatusDialog").dialog("option", "width", 800);
 	$("#pigStatusDialog").dialog("option", "height", 400);
@@ -282,7 +291,7 @@ function renameItem() {
 	var originalFilePath  = $(this).attr('originalFilePath');
 	var targetFileName = $('#targetFileName').val();
 	var targetFilePath = baseName + targetFileName;
-	var url = '?command=renamefile&before='+originalFilePath + '&after='+ targetFilePath;
+	var url = '?command=renameFile&before='+originalFilePath + '&after='+ targetFilePath;
 	$.get(url, function(data) {
 		loadFileList('<?=$dir?>');
 	});
@@ -398,58 +407,12 @@ function showJsonFile($filePath, $offset, $len) {
 	$csv = hadoop("hadoop HdfsFileReader $filePath $offset $len"); 
 	print convertToJson($csv);
 }
-function getcsv($input) {
-	$arr = str_getcsv($input);
-	return (array("cell" => $arr));
-}
 function convertToJson($csv) {
 	$csv = substr($csv, 0, -1);
 	$arr = array_map("getcsv", explode("\n", $csv) );
 	return json_encode( array("rows" => $arr) ) ;
 }
 
-
-function repeatString($prefix, $postfix, $count, $numberPostFix=false,$delim=",") {
-	$r = "";
-	for($i = 0; $i < $count; $i++ ) {
-		if( $i > 0 ) {
-			$r .= $delim;
-		}
-		$r .=$prefix;
-		if( $numberPostFix ) {
-			$r .= $i;
-		}
-		$r .= $postfix;
-	}
-	return $r;
-}
-
-function getDataType($size) {
-	$sortOption = "";
-	for($i = 0; $i < $size; $i++ ) {
-		if( $i > 0 ) 
-			$sortOption .= ",";
-		$sortOption .= "str";
-	}
-	return $sortOption;
-}
-
-function getFilter($dataType) {
-	$a = explode(",", $dataType);
-	$r = "";
-	$d = "";
-	foreach($a as $v ) {
-		if( $v == "int") { 
-			$v = "numeric";
-		}
-		else {
-			$v = "text";
-		}
-		$r .= "$d#$v"."_filter";
-		$d = ",";
-	}
-	return $r;
-}
 function hadoop($command, $beforeCommand="", $afterCommand="") {
 	global $HADOOP_HOME;
 	if( strlen($beforeCommand) > 0 ) {
@@ -475,6 +438,8 @@ function getMetaFilePath($filePath ) {
 	}
 	return $metaPath;
 }
+
+/*
 function viewPigJob($input) {
 	$user = exec("whoami");
 	$lines = hadoop("hadoop JobList $user | grep PigFilter:$input | sort -r");
@@ -506,11 +471,16 @@ function executePig($input, $output, $columns, $condition) {
 		"--jobName", $jobName);
 	new PigFilterScriptBuilder($arr);
 }
+*/
 function deleteFile($filePath ) {
 	print hadoop("hadoop fs -rm $filePath");
 }
-function renameFile($before, $after ) {
-	print hadoop("hadoop fs -mv $before $after");
+function renameFile() {
+	$before = getVar("before");
+	$after  = getVar("after");
+	$cmd = "hadoop fs -mv $before $after";
+	print $cmd;
+	print hadoop($cmd);
 }
 
 function saveMeta($filePath, $json) {
@@ -534,13 +504,8 @@ function parseLS($str) {
 	$r['fullpath'] = $a[7];
 	$names = explode('/', $r['fullpath']);
 	$r['name'] = $names[ count($names) -1 ];
-	if( $type != "dir") {
-		$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
-		$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
-	}
-	else {
-		$r['operation'] = '';
-	}
+	$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
+	$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
 
 	$r['permission'] = substr($a[0], 1);
 	$r['replication'] = $a[1];
