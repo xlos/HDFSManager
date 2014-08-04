@@ -3,9 +3,16 @@ ini_set('display_errors',1);
 ini_set('display_startup_errors',1);
 //error_reporting(-1);
 error_reporting(E_ALL & ~E_NOTICE);
-$HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
+$HADOOP_BIN="/usr/bin/hadoop";
 $FILE_LEN=32768;
 $dir =  getCurrentPath();
+
+$hadoop = new Hadoop($HADOOP_BIN);
+if($hadoop->cmd(getVar('cmd1'), getVar('cmd2'), getVar('params'))){
+	return;
+}
+
+
 
 function getCurrentPath() {
 	$path= getVar('dir');
@@ -27,7 +34,11 @@ function getVar($key, $default=null) {
     return null;
 }
 class Hadoop{
-	private $HADOOP_HOME="/home/ubuntu/user/chaehyun/hadoop-1.2.1";
+	private $HADOOP_BIN="";
+
+    public function Hadoop($bin){
+        $HADOOP_BIN=$bin;
+    }
 
 	public function cmd($cmd1, $cmd2, $params){
 		if($cmd1 == null || $cmd2 == null)
@@ -47,17 +58,17 @@ class Hadoop{
 		if(is_array($params)){
 			$params = implode(" ", $params);
 		}
-		return $this->hadoop_exec("hadoop $cmd1 -$cmd2 $params"); 
+		return $this->hadoop_exec("$cmd1 -$cmd2 $params"); 
 	}
 	private function hadoop_exec($cmd){
-		return shell_exec("export HADOOP_CLASSPATH=.;{$this->HADOOP_HOME}/bin/$cmd"); 
+		return shell_exec("export HADOOP_CLASSPATH=.;{$this->HADOOP_BIN} $cmd"); 
 	}
 
 	public function fs_text($arr){
 		$filePath = $arr[0];
 		$offset = getVar('offset');
 		$len = getVar('len');
-		$r = $this->hadoop_exec("hadoop HdfsFileReader $filePath $offset $len"); 
+		$r = $this->hadoop_exec("HdfsFileReader $filePath $offset $len"); 
 		echo $r;
 	}
 
@@ -169,11 +180,6 @@ class Hadoop{
 	}
 
 }
-$hadoop = new Hadoop();
-if($hadoop->cmd(getVar('cmd1'), getVar('cmd2'), getVar('params'))){
-	return;
-}
-
 ?>
 <html>
 <head>
