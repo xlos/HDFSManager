@@ -12,8 +12,6 @@ if($hadoop->cmd(getVar('cmd1'), getVar('cmd2'), getVar('params'))){
 	return;
 }
 
-
-
 function getCurrentPath() {
 	$path= getVar('dir');
 	if( $path == null || $path == "") {
@@ -37,7 +35,7 @@ class Hadoop{
 	private $HADOOP_BIN="";
 
     public function Hadoop($bin){
-        $HADOOP_BIN=$bin;
+        $this->HADOOP_BIN=$bin;
     }
 
 	public function cmd($cmd1, $cmd2, $params){
@@ -133,7 +131,8 @@ class Hadoop{
 		return $r;
 	}
 
-	public function fs_ls($path) {
+	public function fs_ls($arr) {
+        $path = $arr[0];
 		print "<table class=grid>\n";
 		print "<tr>
 		<th class=type> Type </th>
