@@ -107,7 +107,7 @@ class Hadoop{
 	}
 
 	public function splitPathAndAddLink($path) {
-		$r = $this->addLink("/", "ROOT /");
+		$r = $this->addLink("/", "hdfs:///");
 		$a = explode("/", $path);
 		$path = "";
 		$delim = "";
