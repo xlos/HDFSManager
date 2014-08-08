@@ -64,24 +64,21 @@ class Hadoop{
 	private function parseLS($str) {
 		$a = preg_split("/\s+/", $str);
 		$r = array();
-
 		$type = "file";
 		if( $a[0][0] == 'd') {
 			$type = "dir";
 		}
 		$r['type'] = $type;
-
 		$r['fullpath'] = $a[7];
 		$names = explode('/', $r['fullpath']);
 		$r['name'] = $names[ count($names) -1 ];
-		$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
-		$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
-
+		//$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
+		//$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
 		$r['permission'] = substr($a[0], 1);
 		$r['replication'] = $a[1];
 		$r['owner'] = $a[2];
 		$r['group'] = $a[3];
-		$r['size'] = $a[4];
+		$r['size'] = $this->convertToHumanReadableSize($a[4]);
 		$r['modified'] = $a[5] . " " . $a[6];
 		return $r;
 	}
@@ -102,9 +99,6 @@ class Hadoop{
 		return "<a href=?dir=$dir>$name</a>";
 	}
 
-	private function addFileLink($dir, $name) {
-		return "<a href=\"javascript:viewFile('$dir')\">$name</a>";
-	}
 
 	public function splitPathAndAddLink($path) {
 		$r = $this->addLink("/", "hdfs:///");
@@ -123,6 +117,20 @@ class Hadoop{
 	}
 
 	public function fs_ls($path) {
+		$outputStr = $this->hadoop_cmd("fs", "ls", $path); 
+		$output = explode("\n", substr($outputStr, 0, -1));
+		$result = array();
+
+		foreach($output as $val) {
+			if( strncmp("Found", $val, 5) == 0 ) {
+				continue;
+			}
+			$r = $this->parseLS($val);
+			$result[] = $r;
+		}
+		print json_encode($result);
+	
+		/*
 		print "<table class=grid>\n";
 		print "<tr>
 		<th class=type> Type </th>
@@ -166,6 +174,7 @@ class Hadoop{
 			print "</tr>\n";
 		} 
 		print "</table>";
+		*/
 	}
 
 }
@@ -185,11 +194,12 @@ body, input, textarea, select {
     font-family: Helvetica,sans-serif;
     font-size: 12px;
 }
-table.grid a {
+table.grid a, .path_link_file{ 
     color: #1A3448;
     padding: 0 3px;
+	text-decoration:underline;
 }
-table.grid a:hover, table.grid a.hover {
+table.grid a:hover, table.grid a.hover, .path_link_file:hover {
     background-color: #3169C6;
     color: white;
 }
@@ -413,7 +423,71 @@ function deleteItem() {
 
 function loadFileList(dir) {
 	url = '?cmd1=fs&cmd2=ls&params='+dir;
-	$('#hdfs').load(url, function() {
+	//$('#hdfs').load(url, function(res) {
+	$.getJSON(url, function(json) {
+		var r = "<table class=grid>\n<tr>\
+		<th class=type> Type </th>\
+		<th class=name width=300> Name </th>\
+		<th class=permissions> Operations </th>\
+		<th class=permissions> Permissions </th>\
+		<th class=replications> Replicates </th>\
+		<th class=owner> Owner </th>\
+		<th class=group> Group </th>\
+		<th class=blockSize> Block Size </th>\
+		<th class=modified> Modified </th>\
+		</tr>";
+	
+		for(var i in json){
+			var d = json[i];
+			r += "<tr>";
+			r += "<td>" + d.type + "</td>";
+			r += "<td>" + '<p class="path_link_'+d.type+'"'+ ' data-fullpath="'+d.fullpath+'">' + d.name + "</p></td>";
+			r += "<td></td>";
+			r += "<td>" + d.permission + "</td>";
+			r += "<td>" + d.replication + "</td>";
+			r += "<td>" + d.owner + "</td>";
+			r += "<td>" + d.group + "</td>";
+			r += "<td>" + d.size + "</td>";
+			r += "<td>" + d.modified + "</td>";
+			r += "</tr>";
+		}
+
+/*
+			if( key == "name") {
+					if( $r['type'] == "dir") {
+						$v = $this->addLink($r['fullpath'], $v);
+					}
+					else{
+						$v = $this->addFileLink($r['fullpath'], $v);
+					}
+				}
+				else if( $key == "fullpath") {
+					continue;
+				}
+				else if( $key == "size") {
+					if( $r['type'] == "file") {
+						$v = $this->convertToHumanReadableSize($v);
+					}
+				}
+				print "<td> $v </td>\n";
+
+			r += "</tr>";
+		}
+		console.log(json);
+		*/
+		r += '</table>';
+		$('#hdfs').html(r);
+
+		$( ".path_link_dir").html(function(i, txt){
+			href = '?dir='+$(this).attr('data-fullpath');
+			return '<a href="' + href + '">'+txt + '</a>';
+		});
+
+
+		$( ".path_link_file").click(function(){
+			viewFile($(this).attr('data-fullpath'));
+		});
+
 
 		//image overlay effect
 		$( ".operations").mouseover(function(e) {
