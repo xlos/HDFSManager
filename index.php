@@ -4,7 +4,7 @@ ini_set('display_startup_errors',1);
 //error_reporting(-1);
 error_reporting(E_ALL & ~E_NOTICE);
 //$HADOOP_BIN="/usr/bin/hadoop";
-$HADOOP_BIN="/usr/bin/hadoop";
+$HADOOP_BIN="/home/ubuntu/user/chaehyun/hadoop-1.2.1/bin/hadoop";
 $FILE_LEN=32768;
 $dir =  getCurrentPath();
 
@@ -136,7 +136,8 @@ class Hadoop{
 				continue;
 			}
 			$r = $this->parseLS($val);
-			$result[] = $r;
+			if($r['name'] != '')
+				$result[] = $r;
 		}
 		print json_encode($result);
 	
@@ -457,29 +458,6 @@ function loadFileList(dir) {
 			r += "</tr>";
 		}
 
-/*
-			if( key == "name") {
-					if( $r['type'] == "dir") {
-						$v = $this->addLink($r['fullpath'], $v);
-					}
-					else{
-						$v = $this->addFileLink($r['fullpath'], $v);
-					}
-				}
-				else if( $key == "fullpath") {
-					continue;
-				}
-				else if( $key == "size") {
-					if( $r['type'] == "file") {
-						$v = $this->convertToHumanReadableSize($v);
-					}
-				}
-				print "<td> $v </td>\n";
-
-			r += "</tr>";
-		}
-		console.log(json);
-		*/
 		r += '</table>';
 		$('#hdfs').html(r);
 
