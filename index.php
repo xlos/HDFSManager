@@ -43,7 +43,7 @@ class Hadoop{
 		if($cmd1 == null || $cmd2 == null)
 			return FALSE;
 		$method = $cmd1."_$cmd2";
-		$params = explode(" ", urldecode($params));
+		$params = explode(" ", $params);
 
 		if(method_exists($this, $method)) {
 			print $this->$method($params);
@@ -82,48 +82,16 @@ class Hadoop{
 		$r['fullpath'] = $a[7];
 		$names = explode('/', $r['fullpath']);
 		$r['name'] = $names[ count($names) -1 ];
-		//$r['operation'] = '<img path="'.$r['fullpath'].'"class=operations command=rename src=images/rename_off.png title="rename file">';
-		//$r['operation'] .= ' <img path="'.$r['fullpath'].'"class=operations command=delete src=images/delete_off.png title="delete file">';
 		$r['permission'] = substr($a[0], 1);
 		$r['replication'] = $a[1];
 		$r['owner'] = $a[2];
 		$r['group'] = $a[3];
-		$r['size'] = $this->convertToHumanReadableSize($a[4]);
+		$r['size'] = $a[4];
 		$r['modified'] = $a[5] . " " . $a[6];
 		return $r;
 	}
-	private function convertToHumanReadableSize($size)
-	{
-		if($size == "") {
-			return $size;
-		}
-		$filesizename = array(" Bytes", " KB", " MB", " GB", " TB", " PB", " EB", " ZB", " YB");
-		return $size ? round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $filesizename[$i] : '0 Bytes';
-	}
-
 	public function postVar($key) {
 		return urldecode($_POST[$key]);
-	}
-
-	private function addLink($dir, $name) {
-		return "<a href=?dir=$dir>$name</a>";
-	}
-
-
-	public function splitPathAndAddLink($path) {
-		$r = $this->addLink("/", "hdfs:///");
-		$a = explode("/", $path);
-		$path = "";
-		$delim = "";
-		foreach( $a as $v ) {
-			if( $v == "") {
-				continue;
-			}
-			$path .= "/" . $v;
-			$r .= $delim . $this->addLink($path, $v);
-			$delim = "/";
-		}
-		return $r;
 	}
 
 	public function fs_ls($path) {
@@ -140,54 +108,17 @@ class Hadoop{
 				$result[] = $r;
 		}
 		print json_encode($result);
-	
-		/*
-		print "<table class=grid>\n";
-		print "<tr>
-		<th class=type> Type </th>
-		<th class=name width=300> Name </th>
-		<th class=permissions> Operations </th>
-		<th class=permissions> Permissions </th>
-		<th class=replications> Replicates </th>
-		<th class=owner> Owner </th>
-		<th class=group> Group </th>
-		<th class=blockSize> Block Size </th>
-		<th class=modified> Modified </th>
-		</tr>\n";
-		$outputStr = $this->hadoop_cmd("fs", "ls", $path); 
-		$output = explode("\n", substr($outputStr, 0, -1));
-
-		foreach($output as $val) {
-			if( strncmp("Found", $val, 5) == 0 ) {
-				continue;
-			}
-			$r = $this->parseLS($val);
-			print "<tr>\n";
-			foreach($r as $key => $v) {
-				if( $key == "name") {
-					if( $r['type'] == "dir") {
-						$v = $this->addLink($r['fullpath'], $v);
-					}
-					else{
-						$v = $this->addFileLink($r['fullpath'], $v);
-					}
-				}
-				else if( $key == "fullpath") {
-					continue;
-				}
-				else if( $key == "size") {
-					if( $r['type'] == "file") {
-						$v = $this->convertToHumanReadableSize($v);
-					}
-				}
-				print "<td> $v </td>\n";
-			}
-			print "</tr>\n";
-		} 
-		print "</table>";
-		*/
 	}
-
+	public function fs_count($path) {
+		$outputStr = $this->hadoop_cmd("fs", "count", $path); 
+		$arr = preg_split("/[\s]+/", $outputStr);
+		$result = array();
+		$result['DIR_COUNT'] = $arr[1];
+		$result['FILE_COUNT'] = $arr[2];
+		$result['CONTENT_SIZE'] = $arr[3];
+		$result['FILE_NAME'] = $arr[4];
+		print json_encode($result);
+	}
 }
 ?>
 <html>
@@ -197,8 +128,9 @@ class Hadoop{
 <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js" type="text/javascript"></script>
 <style>
 body, input, textarea, select {
+	padding: 10px 10px 10px 10px;
     font-family: Helvetica,sans-serif;
-    font-size: 12px;
+    font-size: 12pt;
 }
 table.grid a, .path_link_file{ 
     color: #1A3448;
@@ -284,7 +216,7 @@ textarea{
 </head>
 <body>
 <script>
-var dir = "<?=$dir?>";
+var dir = getValueFromURL('dir');
 var gfilepath= "";
 var goffset = 0;
 var glen = <?=$FILE_LEN?>;
@@ -300,10 +232,12 @@ $(function() {
 		}
 	});
 
+	showCurrentPath(dir);
 	loadFileList(dir);
 
 	setDialog("#deleteDialog", openDeleteDialog, "Delete all items", deleteItem);
 	setDialog("#renameDialog", openRenameDialog, "OK", renameItem);
+	setDialog("#capacityDialog", openCapacityDialog, null, null);
 	setDialog("#pigStatusDialog", openPigStatusDialog, "Refresh", openPigStatusDialog);
 	$("#pigStatusDialog").dialog("option", "width", 800);
 	$("#pigStatusDialog").dialog("option", "height", 400);
@@ -316,16 +250,33 @@ $(function() {
 		
 });
 
+function fileSize(a,b,c,d,e){
+ return (b=Math,c=b.log,d=1e3,e=c(a)/c(d)|0,a/b.pow(d,e)).toFixed(2)
+ +' '+(e?'kMGTPEZY'[--e]+'B':'Bytes')
+}
+
+function getValueFromURL( name )
+{
+	name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+	var regexS = "[\\?&]"+name+"=([^&#]*)";
+	var regex = new RegExp( regexS );
+	var results = regex.exec( window.location.href );
+	if( results == null )
+		return null;
+	else
+		return results[1];
+}
 
 function setDialog(name, openFunc, buttonName, buttonFunction) {
 	var buttons = {};
-	buttons[buttonName] = buttonFunction;
+	if(buttonName != null)
+		buttons[buttonName] = buttonFunction;
 	buttons['Cancel'] = function() {$( this ).dialog( "close" );};
 
 	$( name ).dialog({
 		resizable: false,
-		width:400,
-		height:160,
+		width:600,
+		height:300,
 		autoOpen:false,
 		modal: true,
 		open : openFunc,
@@ -381,6 +332,21 @@ function openPigStatusDialog(event, ui) {
 }
 
 
+function openCapacityDialog() {
+	$( "#wait" ).show();
+	var fullpath = $(this).html(); 
+	$(this).html('waiting..');
+	var url = 'index.php';
+	$.getJSON(url, {'cmd1':'fs','cmd2':'count', 'params':fullpath},function(json) {
+		var r = "directories : " + json.DIR_COUNT;
+		r += "<BR>files : " + json.FILE_COUNT;
+		r += "<BR>bytes : " + fileSize(json.CONTENT_SIZE);
+		$('#capacityDialog').html(r);
+		$( "#wait" ).hide();
+	});
+}
+
+
 function openRenameDialog() {
 	var fullpath = $(this).html(); 
 	$(this).html('');
@@ -413,6 +379,7 @@ function renameItem() {
 }
 
 function openDeleteDialog() {
+	var path = $(this).html(); 
 	$( "#deleteDialog").html(path);
 }
 
@@ -425,11 +392,29 @@ function deleteItem() {
 	});
 }
 
+function addLink(dir, name) {
+	return "<a href='?dir="+dir+"'>"+name+"</a>";
+}
 
+function showCurrentPath(dir){
+	var r = "Contents of directory : " + addLink("/", "hdfs:///");
+	var a = dir.split("/");
+	var path = "";
+	var delim = "";
+	for( var i in a ) {
+		var v = a[i];
+		if( v == "") {
+			continue;
+		}
+		path += "/" + v;
+		r += delim + addLink(path, v);
+		delim = "/";
+	}
+	$('#current_path').html(r);
+}
 
 function loadFileList(dir) {
 	url = '?cmd1=fs&cmd2=ls&params='+dir;
-	//$('#hdfs').load(url, function(res) {
 	$.getJSON(url, function(json) {
 		var r = "<table class=grid>\n<tr>\
 		<th class=type> Type </th>\
@@ -448,12 +433,14 @@ function loadFileList(dir) {
 			r += "<tr>";
 			r += "<td>" + d.type + "</td>";
 			r += "<td>" + '<p class="path_link_'+d.type+'"'+ ' data-fullpath="'+d.fullpath+'">' + d.name + "</p></td>";
-			r += "<td></td>";
+			r += '<td><img path="'+d.fullpath+'" class=operations command=rename src=images/rename_off.png title="rename file"> ';
+			r += '<img width=16px path="'+d.fullpath+'" class=operations command=capacity src=images/disksize.png title="check capcity"> ';
+			r += '<img path="'+d.fullpath+'" class=operations command=delete src=images/delete_off.png title="rename file"></td>';
 			r += "<td>" + d.permission + "</td>";
 			r += "<td>" + d.replication + "</td>";
 			r += "<td>" + d.owner + "</td>";
 			r += "<td>" + d.group + "</td>";
-			r += "<td>" + d.size + "</td>";
+			r += "<td>" + fileSize(d.size) + "</td>";
 			r += "<td>" + d.modified + "</td>";
 			r += "</tr>";
 		}
@@ -472,6 +459,7 @@ function loadFileList(dir) {
 		});
 
 
+/*
 		//image overlay effect
 		$( ".operations").mouseover(function(e) {
 			if ( !$(this).hasClass('active') ){
@@ -486,6 +474,7 @@ function loadFileList(dir) {
 				$(this).attr('src', image_name + '_off.' + image_type);
 			}
 		});
+		*/
 
 		//file management
 		$(".operations").click(function(e) {
@@ -543,17 +532,17 @@ These items will be permanently deleted and cannot be recovered. Are you sure?</
 <input type=text></input>
 </div>
 
-
-
-<?
-$path = getCurrentPath();
-echo "Contents of directory " . $hadoop->splitPathAndAddLink($path);
-?>
-<BR>
-<button id="pigStatus" >pigStatus</button>
-
-<div id=hdfs>
+<div id="capacityDialog" title="check Capcity">
 </div>
+
+
+
+
+
+<div id=current_path></div>
+
+<button id="pigStatus" >pigStatus</button>
+<div id=hdfs></div>
 <div id="pigStatusDialog" title="PigStatus" style='display:none'>
 </div>
 
