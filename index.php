@@ -119,6 +119,11 @@ class Hadoop{
 		$result['FILE_NAME'] = $arr[4];
 		print json_encode($result);
 	}
+	public function fs_save($path) {
+		$txt= $_POST["contents"];
+		shell_exec("s='$txt'; echo ".'"$s"'." | {$this->HADOOP_BIN} fs -put - {$path[0]}");
+	}
+
 }
 ?>
 <html>
@@ -127,10 +132,15 @@ class Hadoop{
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
 <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js" type="text/javascript"></script>
 <style>
+html.wait, html.wait * { cursor: wait !important; }
+
 body, input, textarea, select {
 	padding: 10px 10px 10px 10px;
     font-family: Helvetica,sans-serif;
     font-size: 12pt;
+}
+input, textarea{
+	padding: 2px 2px 2px 2px;
 }
 table.grid a, .path_link_file{ 
     color: #1A3448;
@@ -225,7 +235,7 @@ $(function() {
 		resizable:true, 
 		autoOpen:false,
 		width:800,
-		height:500,
+		height:600,
 		buttons: { 
 			"rawView": function() { viewFile(gfilepath, goffset, glen);},
 			"close": function() { $(this).dialog("close") }
@@ -238,6 +248,7 @@ $(function() {
 	setDialog("#deleteDialog", openDeleteDialog, "Delete all items", deleteItem);
 	setDialog("#renameDialog", openRenameDialog, "OK", renameItem);
 	setDialog("#capacityDialog", openCapacityDialog, null, null);
+	setDialog("#createFileDialog", openCreateFileDialog, "Save", saveFile);
 	setDialog("#pigStatusDialog", openPigStatusDialog, "Refresh", openPigStatusDialog);
 	$("#pigStatusDialog").dialog("option", "width", 800);
 	$("#pigStatusDialog").dialog("option", "height", 400);
@@ -247,9 +258,9 @@ $(function() {
 		$( '#' + $(this).attr('id') + 'Dialog').dialog("open"); 
 	});
 
-		
+    $("html").ajaxStart(function () { $(this).addClass("wait"); });
+    $("html").ajaxStop(function () { $(this).removeClass("wait"); });
 });
-
 function fileSize(a,b,c,d,e){
  return (b=Math,c=b.log,d=1e3,e=c(a)/c(d)|0,a/b.pow(d,e)).toFixed(2)
  +' '+(e?'kMGTPEZY'[--e]+'B':'Bytes')
@@ -333,19 +344,35 @@ function openPigStatusDialog(event, ui) {
 
 
 function openCapacityDialog() {
-	$( "#wait" ).show();
 	var fullpath = $(this).html(); 
-	$(this).html('waiting..');
+	$(this).html('<img src=images/wait.gif class=wait_img>waiting..');
 	var url = 'index.php';
 	$.getJSON(url, {'cmd1':'fs','cmd2':'count', 'params':fullpath},function(json) {
 		var r = "directories : " + json.DIR_COUNT;
 		r += "<BR>files : " + json.FILE_COUNT;
 		r += "<BR>bytes : " + fileSize(json.CONTENT_SIZE);
 		$('#capacityDialog').html(r);
-		$( "#wait" ).hide();
+		$( ".wait_img" ).hide();
 	});
 }
 
+
+function openCreateFileDialog() {
+	var dir = getValueFromURL('dir') + '/';
+	$('#created_file_dir').text(dir);
+	$('#created_file_contents').val('');
+	$('#created_file_name').val('');
+}
+
+function saveFile(){
+	var dialog = $(this);
+	var path =  getValueFromURL('dir')+'/'+$('#created_file_name').val();
+	var txt = $('#created_file_contents').val();
+	$.post('?cmd1=fs&cmd2=save&params='+path, {name:path, contents:txt})
+		.done(function(data){
+			loadFileList(dir, dialog);
+	});
+}
 
 function openRenameDialog() {
 	var fullpath = $(this).html(); 
@@ -366,7 +393,7 @@ function openRenameDialog() {
 }
 
 function renameItem() {
-	$( this ).dialog( "close" );
+	var dialog = $(this);
 	$( "#hdfswait" ).show();
 	var baseName = $(this).attr('originalBasePath');
 	var originalFilePath  = $(this).attr('originalFilePath');
@@ -374,7 +401,7 @@ function renameItem() {
 	var targetFilePath = baseName + targetFileName;
 	var url = '?cmd1=fs&cmd2=mv&params='+originalFilePath + '%20'+ targetFilePath;
 	$.get(url, function(data) {
-		loadFileList(dir);
+		loadFileList(dir, dialog);
 	});
 }
 
@@ -384,11 +411,11 @@ function openDeleteDialog() {
 }
 
 function deleteItem() {
-	$( this ).dialog( "close" );
+	var dialog = $(this);
 	$( "#hdfswait" ).show();
 	var path = $( "#deleteDialog").html();
 	$.get('?cmd1=fs&cmd2=rmr&params='+path, function() {
-		loadFileList(dir);
+		loadFileList(dir, dialog);
 	});
 }
 
@@ -413,7 +440,8 @@ function showCurrentPath(dir){
 	$('#current_path').html(r);
 }
 
-function loadFileList(dir) {
+function loadFileList(dir, dialog) {
+	$( "#hdfswait" ).show();
 	url = '?cmd1=fs&cmd2=ls&params='+dir;
 	$.getJSON(url, function(json) {
 		var r = "<table class=grid>\n<tr>\
@@ -488,6 +516,8 @@ function loadFileList(dir) {
 		});
 
 		$( "#hdfswait" ).hide();
+		if(dialog != null)
+			dialog.dialog("close");
 	});
 }
 
@@ -532,20 +562,25 @@ These items will be permanently deleted and cannot be recovered. Are you sure?</
 <input type=text></input>
 </div>
 
-<div id="capacityDialog" title="check Capcity">
+<div id="capacityDialog" title="Check Capcity">
 </div>
 
-
-
-
+<div id="createFileDialog" title="Create a file">
+File Name : <span id=created_file_dir></span><input type=text id=created_file_name></input>
+<BR>
+Contents
+<textarea id=created_file_contents>
+</textarea>
+</div>
 
 <div id=current_path></div>
 
 <button id="pigStatus" >pigStatus</button>
+<button id="createFile" >Create a file</button>
 <div id=hdfs></div>
 <div id="pigStatusDialog" title="PigStatus" style='display:none'>
 </div>
 
-<img id="hdfswait" src=images/wait.gif style="position:relative;left:40%;top:200;z-index:100">
+<img id="hdfswait" src=images/wait.gif style="position:relative;left:40%;top:200;z-index:200">
 </body>
 </html>
